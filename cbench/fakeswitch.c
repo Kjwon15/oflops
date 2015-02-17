@@ -19,6 +19,8 @@
 #include "cbench.h"
 #include "fakeswitch.h"
 
+#include "experimenter.h"
+
 #ifdef USE_EPOLL
 #include <sys/epoll.h>
 #endif
@@ -26,9 +28,10 @@
 static int debug_msg(struct fakeswitch * fs, char * msg, ...);
 static int make_features_reply(int switch_id, int xid, char * buf, int buflen);
 static int make_stats_desc_reply(struct ofp_stats_request * req, char * buf, int buflen);
+static int make_auth_reply(int xid, char * buf, int buflen);
 static int parse_set_config(struct ofp_header * msg);
 static int make_config_reply( int xid, char * buf, int buflen);
-static int make_vendor_reply(int xid, char * buf, int buflen);
+//static int make_vendor_reply(int xid, char * buf, int buflen);
 static int make_packet_in(int switch_id, int xid, int buffer_id, char * buf, int buflen, int mac_address);
 static int packet_out_is_lldp(struct ofp_packet_out * po);
 static void fakeswitch_handle_write(struct fakeswitch *fs);
@@ -234,6 +237,27 @@ static int              make_features_reply(int id, int xid, char * buf, int buf
     return sizeof(fake);
 }
 /***********************************************************************/
+static int      make_auth_reply(int xid, char * buf, int buflen) {
+    struct ofp_vendor * vendor;
+    char data[] = {'T', 'E', 'S', 'T'};
+    uint16_t size = sizeof(struct ofp_vendor) + sizeof(data);
+    assert(buflen > size);
+
+    vendor = (struct ofp_vendor *) buf;
+
+    vendor->header.type = OFPT_VENDOR;
+    vendor->header.version = OFP_VERSION;
+    vendor->header.length = htons(size);
+    vendor->header.xid = xid;
+
+    vendor->experimenter = htonl(0xc0ffee);
+    vendor->exp_type = htonl(2);
+    memcpy(&(vendor->data), data, sizeof(data));
+
+    return size;
+
+}
+/***********************************************************************/
 static int      make_stats_desc_reply(struct ofp_stats_request * req, 
         char * buf, int buflen) {
     static struct ofp_desc_stats cbench_desc = { 
@@ -259,6 +283,7 @@ static int      make_stats_desc_reply(struct ofp_stats_request * req,
     return len;
 }
 /***********************************************************************/
+/*
 static int make_vendor_reply(int xid, char * buf, int buflen)
 {
     struct ofp_error_msg * e;
@@ -272,6 +297,7 @@ static int make_vendor_reply(int xid, char * buf, int buflen)
     e->code = htons(OFPBRC_BAD_VENDOR);
     return sizeof(struct ofp_error_msg);
 }
+*/
 /***********************************************************************
  *  return 1 if the embedded packet in the packet_out is lldp
  * 
@@ -425,7 +451,8 @@ void fakeswitch_handle_read(struct fakeswitch *fs)
             case OFPT_VENDOR:
                 // pull msgs out of buffer
                 debug_msg(fs, "got vendor");
-                count = make_vendor_reply(ofph->xid, buf, BUFLEN);
+                //count = make_vendor_reply(ofph->xid, buf, BUFLEN);
+                count = make_auth_reply(ofph->xid, buf, BUFLEN);
                 msgbuf_push(fs->outbuf, buf, count);
                 debug_msg(fs, "sent vendor");
                 // apply nox hack; nox ignores packet_in until this msg is sent

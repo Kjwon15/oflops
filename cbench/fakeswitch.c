@@ -15,6 +15,8 @@
 
 #include <netinet/in.h>
 
+#include <openssl/sha.h>
+
 #include "config.h"
 #include "cbench.h"
 #include "fakeswitch.h"
@@ -28,7 +30,7 @@
 static int debug_msg(struct fakeswitch * fs, char * msg, ...);
 static int make_features_reply(int switch_id, int xid, char * buf, int buflen);
 static int make_stats_desc_reply(struct ofp_stats_request * req, char * buf, int buflen);
-static int make_auth_reply(int xid, char * buf, int buflen);
+static int make_auth_reply(struct ofp_header * data, char * buf, int buflen);
 static int parse_set_config(struct ofp_header * msg);
 static int make_config_reply( int xid, char * buf, int buflen);
 //static int make_vendor_reply(int xid, char * buf, int buflen);
@@ -237,22 +239,28 @@ static int              make_features_reply(int id, int xid, char * buf, int buf
     return sizeof(fake);
 }
 /***********************************************************************/
-static int      make_auth_reply(int xid, char * buf, int buflen) {
+static int      make_auth_reply(struct ofp_header * data, char * buf, int buflen) {
     struct ofp_vendor * vendor;
-    char data[] = {'T', 'E', 'S', 'T'};
-    uint16_t size = sizeof(struct ofp_vendor) + sizeof(data);
+    struct ofp_vendor * request;
+    unsigned char reply[SHA_DIGEST_LENGTH];
+    uint16_t size = sizeof(struct ofp_vendor) + sizeof(reply);
     assert(buflen > size);
 
+
+    request = (struct ofp_vendor *) data;
     vendor = (struct ofp_vendor *) buf;
+    uint16_t msg_length = ntohs(request->header.length) - sizeof(struct ofp_vendor);
+
+    SHA1((const unsigned char *)request->data, msg_length, reply);
 
     vendor->header.type = OFPT_VENDOR;
     vendor->header.version = OFP_VERSION;
     vendor->header.length = htons(size);
-    vendor->header.xid = xid;
+    vendor->header.xid = request->header.xid;
 
     vendor->experimenter = htonl(0xc0ffee);
     vendor->exp_type = htonl(2);
-    memcpy(&(vendor->data), data, sizeof(data));
+    memcpy(&(vendor->data), reply, sizeof(reply));
 
     return size;
 
@@ -452,7 +460,7 @@ void fakeswitch_handle_read(struct fakeswitch *fs)
                 // pull msgs out of buffer
                 debug_msg(fs, "got vendor");
                 //count = make_vendor_reply(ofph->xid, buf, BUFLEN);
-                count = make_auth_reply(ofph->xid, buf, BUFLEN);
+                count = make_auth_reply(ofph, buf, BUFLEN);
                 msgbuf_push(fs->outbuf, buf, count);
                 debug_msg(fs, "sent vendor");
                 // apply nox hack; nox ignores packet_in until this msg is sent

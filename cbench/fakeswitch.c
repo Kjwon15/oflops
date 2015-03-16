@@ -15,7 +15,7 @@
 
 #include <netinet/in.h>
 
-#include <openssl/sha.h>
+#include <openssl/md5.h>
 
 #include "config.h"
 #include "cbench.h"
@@ -242,7 +242,7 @@ static int              make_features_reply(int id, int xid, char * buf, int buf
 static int      make_auth_reply(struct ofp_header * data, char * buf, int buflen) {
     struct ofp_vendor * vendor;
     struct ofp_vendor * request;
-    unsigned char reply[SHA_DIGEST_LENGTH];
+    unsigned char reply[16];
     uint16_t size = sizeof(struct ofp_vendor) + sizeof(reply);
     assert(buflen > size);
 
@@ -251,7 +251,10 @@ static int      make_auth_reply(struct ofp_header * data, char * buf, int buflen
     vendor = (struct ofp_vendor *) buf;
     uint16_t msg_length = ntohs(request->header.length) - sizeof(struct ofp_vendor);
 
-    SHA1((const unsigned char *)request->data, msg_length, reply);
+    MD5_CTX context;
+    MD5_Init(&context);
+    MD5_Update(&context, request->data, msg_length);
+    MD5_Final(reply, &context);
 
     vendor->header.type = OFPT_VENDOR;
     vendor->header.version = OFP_VERSION;

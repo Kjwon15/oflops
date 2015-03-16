@@ -15,7 +15,7 @@
 
 #include <netinet/in.h>
 
-#include <openssl/md5.h>
+#include <openssl/aes.h>
 
 #include "config.h"
 #include "cbench.h"
@@ -242,7 +242,7 @@ static int              make_features_reply(int id, int xid, char * buf, int buf
 static int      make_auth_reply(struct ofp_header * data, char * buf, int buflen) {
     struct ofp_vendor * vendor;
     struct ofp_vendor * request;
-    unsigned char reply[16];
+    unsigned char reply[AES_BLOCK_SIZE];
     uint16_t size = sizeof(struct ofp_vendor) + sizeof(reply);
     assert(buflen > size);
 
@@ -251,10 +251,16 @@ static int      make_auth_reply(struct ofp_header * data, char * buf, int buflen
     vendor = (struct ofp_vendor *) buf;
     uint16_t msg_length = ntohs(request->header.length) - sizeof(struct ofp_vendor);
 
-    MD5_CTX context;
-    MD5_Init(&context);
-    MD5_Update(&context, request->data, msg_length);
-    MD5_Final(reply, &context);
+    AES_KEY aes_key;
+    unsigned char iv[AES_BLOCK_SIZE] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, };
+    static const unsigned char key[16] = {
+        0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+        0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff,
+    };
+
+
+    AES_set_encrypt_key(key, 128, &aes_key);
+    AES_cbc_encrypt(request->data, reply, msg_length, &aes_key, iv, AES_ENCRYPT);
 
     vendor->header.type = OFPT_VENDOR;
     vendor->header.version = OFP_VERSION;
